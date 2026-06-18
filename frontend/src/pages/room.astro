@@ -1,0 +1,224 @@
+---
+import Layout from "../layouts/Layout.astro";
+---
+
+<Layout title="EstiMate - Planning Room">
+  <section>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem">
+      <div>
+        <h1>Room <span id="roomCode">---</span></h1>
+        <p id="connectionStatus" style="color:#64748b;font-size:0.875rem">Connecting...</p>
+      </div>
+      <button id="leaveBtn" style="background:#dc2626">Leave</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 240px;gap:1.5rem">
+      <div>
+        <div id="cardGrid" style="display:flex;flex-wrap:wrap;gap:0.5rem;justify-content:center">
+          Loading cards...
+        </div>
+
+        <div style="text-align:center;margin-top:1.5rem">
+          <div id="roundInfo" style="color:#94a3b8;margin-bottom:0.5rem"></div>
+          <div id="hostControls" style="display:none;gap:0.5rem;justify-content:center;flex-wrap:wrap">
+            <button id="revealBtn">Reveal</button>
+            <button id="clearBtn">Clear Round</button>
+            <button id="newRoundBtn">New Round</button>
+          </div>
+        </div>
+
+        <div id="resultsArea" style="display:none;margin-top:1.5rem">
+          <h3>Votes</h3>
+          <div id="resultsGrid" style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.5rem"></div>
+        </div>
+      </div>
+
+      <div style="background:#1e293b;border-radius:12px;padding:1rem">
+        <h3 style="font-size:1rem;margin-bottom:0.75rem">Participants</h3>
+        <ul id="participantList" style="list-style:none">
+          <li style="color:#64748b">Loading...</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</Layout>
+
+<script>
+const params = new URLSearchParams(window.location.search);
+const roomId = params.get("code") || "";
+const myName = params.get("name") || "Anonymous";
+const amHost = params.get("host") === "1";
+
+let ws = null;
+let state = null;
+let myId = localStorage.getItem(`estimate_pid_${roomId}`);
+
+document.getElementById("roomCode").textContent = roomId;
+
+function connect() {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  const wsUrl = `${proto}//${location.host}/ws/${roomId}?name=${encodeURIComponent(myName)}${myId ? `&pid=${myId}` : ""}`;
+  ws = new WebSocket(wsUrl);
+
+  ws.onopen = () => {
+    const el = document.getElementById("connectionStatus");
+    el.textContent = "Connected";
+    el.style.color = "#22c55e";
+  };
+
+  ws.onmessage = (event) => handleMessage(JSON.parse(event.data));
+
+  ws.onclose = () => {
+    const el = document.getElementById("connectionStatus");
+    el.textContent = "Disconnected. Reconnecting...";
+    el.style.color = "#ef4444";
+    setTimeout(connect, 2000);
+  };
+}
+
+function handleMessage(msg) {
+  switch (msg.type) {
+    case "room_state": {
+      state = msg.state;
+      if (!myId) {
+        myId = state.participants[state.participants.length - 1]?.id;
+        if (myId) localStorage.setItem(`estimate_pid_${roomId}`, myId);
+      }
+      renderParticipants();
+      renderCards();
+      renderRoundInfo();
+      renderHostControls();
+      break;
+    }
+    case "participant_joined": {
+      state?.participants.push(msg.participant);
+      renderParticipants();
+      break;
+    }
+    case "participant_left": {
+      if (state) state.participants = state.participants.filter(p => p.id !== msg.participantId);
+      renderParticipants();
+      break;
+    }
+    case "participant_updated": {
+      const p = state?.participants.find(x => x.id === msg.participant.id);
+      if (p) Object.assign(p, msg.participant);
+      renderParticipants();
+      break;
+    }
+    case "vote_cast": {
+      const el = document.querySelector(`[data-pid="${msg.participantId}"]`);
+      if (el) el.classList.add("voted");
+      break;
+    }
+    case "votes_revealed":
+      renderResults(msg.votes);
+      break;
+    case "new_round":
+      if (state) state.currentRound = msg.round;
+      document.getElementById("resultsArea").style.display = "none";
+      renderCards();
+      renderRoundInfo();
+      break;
+    case "round_cleared":
+      if (state) state.currentRound = null;
+      document.getElementById("resultsArea").style.display = "none";
+      renderCards();
+      renderRoundInfo();
+      break;
+    case "host_changed":
+      if (state) state.hostId = msg.hostId;
+      renderHostControls();
+      break;
+    case "settings_changed":
+      if (state) state.numbers = msg.numbers;
+      renderCards();
+      break;
+    case "error":
+      alert(msg.message);
+      break;
+  }
+}
+
+function send(msg) { ws?.send(JSON.stringify(msg)); }
+
+function renderParticipants() {
+  if (!state) return;
+  const list = document.getElementById("participantList");
+  list.innerHTML = state.participants.map(p => `
+    <li style="display:flex;align-items:center;gap:0.5rem;padding:0.4rem 0;${p.id === state.hostId ? "color:#818cf8" : ""}">
+      <span style="width:8px;height:8px;border-radius:50%;background:${p.id === myId ? "#22c55e" : "#475569"}"></span>
+      ${p.name} ${p.id === state.hostId ? "👑" : ""} ${!p.canVote ? "🔇" : ""}
+    </li>
+  `).join("");
+}
+
+function renderCards() {
+  if (!state) return;
+  const grid = document.getElementById("cardGrid");
+  grid.innerHTML = state.numbers.map(n => `
+    <button class="vote-card" data-value="${n}" style="
+      width:70px;height:100px;background:#1e293b;border:2px solid #334155;
+      border-radius:10px;font-size:1.3rem;font-weight:700;cursor:pointer;
+      display:flex;align-items:center;justify-content:center;transition:all 0.12s;
+    ">${n}</button>
+  `).join("");
+
+  grid.querySelectorAll(".vote-card").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const value = btn.dataset.value;
+      send({ type: "vote", value });
+      grid.querySelectorAll(".vote-card").forEach(b => b.classList.remove("selected"));
+      btn.classList.add("selected");
+      btn.style.borderColor = "#6366f1";
+      btn.style.background = "#2e1065";
+    });
+  });
+}
+
+function renderRoundInfo() {
+  const el = document.getElementById("roundInfo");
+  if (state?.currentRound) {
+    const r = state.currentRound;
+    el.textContent = `Round ${r.number}${r.topic ? ` — ${r.topic}` : ""} | ${r.status}`;
+  } else {
+    el.textContent = "No active round";
+  }
+}
+
+function renderHostControls() {
+  const el = document.getElementById("hostControls");
+  el.style.display = (state && state.hostId === myId) ? "flex" : "none";
+}
+
+function renderResults(votes) {
+  const area = document.getElementById("resultsArea");
+  area.style.display = "block";
+  const grid = document.getElementById("resultsGrid");
+  grid.innerHTML = state.participants.map(p => `
+    <div style="background:#1e293b;border-radius:8px;padding:0.75rem 1rem;text-align:center;min-width:80px">
+      <div style="font-size:1.5rem;font-weight:700">${votes[p.id] ?? "—"}</div>
+      <div style="font-size:0.75rem;color:#94a3b8;margin-top:0.25rem">${p.name}</div>
+    </div>
+  `).join("");
+}
+
+connect();
+
+document.getElementById("revealBtn")?.addEventListener("click", () => send({ type: "reveal" }));
+document.getElementById("clearBtn")?.addEventListener("click", () => send({ type: "clear_round" }));
+document.getElementById("newRoundBtn")?.addEventListener("click", () => {
+  const topic = prompt("Round topic (optional):") || "";
+  send({ type: "new_round", topic });
+});
+document.getElementById("leaveBtn")?.addEventListener("click", () => {
+  ws?.close();
+  window.location.href = "/";
+});
+</script>
+
+<style>
+  .vote-card:hover { border-color: #6366f1 !important; transform: translateY(-2px); }
+  .vote-card.selected { border-color: #6366f1; background: #2e1065; }
+  .vote-card { position: relative; }
+</style>

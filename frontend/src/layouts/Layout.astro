@@ -1,0 +1,37 @@
+---
+export interface Props {
+  title?: string;
+}
+const { title = "EstiMate" } = Astro.props;
+---
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        background: #0f172a; color: #e2e8f0; min-height: 100vh;
+      }
+      main { max-width: 900px; margin: 0 auto; padding: 2rem 1rem; }
+      h1, h2, h3 { color: #f8fafc; }
+      button, input, select {
+        font: inherit; color: inherit; border-radius: 8px;
+      }
+      input { background: #1e293b; border: 1px solid #334155; padding: 0.6rem 1rem; width: 100%; }
+      input:focus { outline: 2px solid #6366f1; border-color: transparent; }
+      button {
+        background: #6366f1; border: none; padding: 0.6rem 1.5rem;
+        cursor: pointer; font-weight: 600; transition: background 0.15s;
+      }
+      button:hover { background: #4f46e5; }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+    </style>
+  </head>
+  <body>
+    <main><slot /></main>
+  </body>
+</html>

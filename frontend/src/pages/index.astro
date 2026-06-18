@@ -1,0 +1,43 @@
+---
+import Layout from "../layouts/Layout.astro";
+---
+
+<Layout title="EstiMate - Planning Poker">
+  <section style="text-align:center;padding-top:4rem">
+    <h1 style="font-size:3rem;font-weight:800;letter-spacing:-0.02em">EstiMate</h1>
+    <p style="color:#94a3b8;margin:0.5rem 0 2rem">Planning poker for remote teams</p>
+
+    <form id="createForm" style="max-width:400px;margin:0 auto;display:flex;flex-direction:column;gap:0.75rem">
+      <input type="text" id="hostName" placeholder="Your name" required />
+      <button type="submit">Create Room</button>
+    </form>
+
+    <div style="margin:1.5rem 0;color:#475569">or</div>
+
+    <form id="joinForm" style="max-width:400px;margin:0 auto;display:flex;flex-direction:column;gap:0.75rem">
+      <input type="text" id="joinCode" placeholder="Room code" required />
+      <input type="text" id="joinName" placeholder="Your name" required />
+      <button type="submit">Join Room</button>
+    </form>
+  </section>
+</Layout>
+
+<script>
+document.getElementById("createForm")?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const hostName = (document.getElementById("hostName") as HTMLInputElement).value.trim();
+  if (!hostName) return;
+  const res = await fetch("/api/rooms", { method: "POST", body: JSON.stringify({ hostName }) });
+  if (!res.ok) return alert("Failed to create room");
+  const room = await res.json();
+  window.location.href = `/room?code=${room.id}&name=${encodeURIComponent(hostName)}&host=1`;
+});
+
+document.getElementById("joinForm")?.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const code = (document.getElementById("joinCode") as HTMLInputElement).value.trim().toUpperCase();
+  const name = (document.getElementById("joinName") as HTMLInputElement).value.trim();
+  if (!code || !name) return;
+  window.location.href = `/room?code=${code}&name=${encodeURIComponent(name)}`;
+});
+</script>
