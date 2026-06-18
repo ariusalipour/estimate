@@ -2,45 +2,47 @@
 import Layout from "../layouts/Layout.astro";
 ---
 
-<Layout title="EstiMate - Planning Room">
-  <section>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem">
-      <div>
-        <h1>Room <span id="roomCode">---</span></h1>
-        <p id="connectionStatus" style="color:#64748b;font-size:0.875rem">Connecting...</p>
+<Layout title="EstiMate — room">
+  <div id="roomHeader" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+    <div>
+      <span style="font-size:0.75rem;opacity:0.4">$ ROOM</span>
+      <h1 style="font-size:1.2rem;margin-top:0.15rem">
+        <span id="roomCode">---</span>
+        <span id="connectionStatus" style="font-size:0.7rem;opacity:0.5;font-weight:400">connecting...</span>
+      </h1>
+    </div>
+    <button id="leaveBtn" style="background:transparent;color:#33ff33;border:1px solid #33ff33;font-size:0.75rem;padding:0.4rem 1rem">[ Leave ]</button>
+  </div>
+
+  <hr class="divider" style="margin:0 0 1rem 0" />
+
+  <div style="display:grid;grid-template-columns:1fr 220px;gap:1rem">
+    <div>
+      <div id="roundBanner" style="font-size:0.75rem;opacity:0.5;margin-bottom:0.75rem">&gt; <span id="roundInfo">no active round</span></div>
+
+      <div id="cardGrid" style="display:flex;flex-wrap:wrap;gap:0.4rem;justify-content:center;margin-bottom:1rem">
+        <span style="opacity:0.3;font-size:0.8rem">loading...</span>
       </div>
-      <button id="leaveBtn" style="background:#dc2626">Leave</button>
+
+      <div id="hostControls" style="display:none;gap:0.4rem;justify-content:center;flex-wrap:wrap;margin-bottom:1rem">
+        <button class="cmd-btn" id="revealBtn">[ reveal ]</button>
+        <button class="cmd-btn" id="clearBtn">[ clear ]</button>
+        <button class="cmd-btn" id="newRoundBtn">[ new round ]</button>
+      </div>
+
+      <div id="resultsArea" style="display:none;margin:1rem 0">
+        <div style="font-size:0.75rem;opacity:0.4;margin-bottom:0.5rem">$ RESULTS</div>
+        <div id="resultsGrid" style="display:flex;flex-wrap:wrap;gap:0.4rem"></div>
+      </div>
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 240px;gap:1.5rem">
-      <div>
-        <div id="cardGrid" style="display:flex;flex-wrap:wrap;gap:0.5rem;justify-content:center">
-          Loading cards...
-        </div>
-
-        <div style="text-align:center;margin-top:1.5rem">
-          <div id="roundInfo" style="color:#94a3b8;margin-bottom:0.5rem"></div>
-          <div id="hostControls" style="display:none;gap:0.5rem;justify-content:center;flex-wrap:wrap">
-            <button id="revealBtn">Reveal</button>
-            <button id="clearBtn">Clear Round</button>
-            <button id="newRoundBtn">New Round</button>
-          </div>
-        </div>
-
-        <div id="resultsArea" style="display:none;margin-top:1.5rem">
-          <h3>Votes</h3>
-          <div id="resultsGrid" style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.5rem"></div>
-        </div>
-      </div>
-
-      <div style="background:#1e293b;border-radius:12px;padding:1rem">
-        <h3 style="font-size:1rem;margin-bottom:0.75rem">Participants</h3>
-        <ul id="participantList" style="list-style:none">
-          <li style="color:#64748b">Loading...</li>
-        </ul>
-      </div>
+    <div style="border:1px solid #33ff33;border-color:#33ff33;padding:0.75rem">
+      <div style="font-size:0.7rem;opacity:0.4;margin-bottom:0.5rem">$ PARTICIPANTS</div>
+      <ul id="participantList" style="list-style:none;font-size:0.82rem">
+        <li style="opacity:0.3">waiting...</li>
+      </ul>
     </div>
-  </section>
+  </div>
 </Layout>
 
 <script>
@@ -62,16 +64,16 @@ function connect() {
 
   ws.onopen = () => {
     const el = document.getElementById("connectionStatus");
-    el.textContent = "Connected";
-    el.style.color = "#22c55e";
+    el.textContent = "connected";
+    el.style.opacity = "0.6";
   };
 
   ws.onmessage = (event) => handleMessage(JSON.parse(event.data));
 
   ws.onclose = () => {
     const el = document.getElementById("connectionStatus");
-    el.textContent = "Disconnected. Reconnecting...";
-    el.style.color = "#ef4444";
+    el.textContent = "reconnecting...";
+    el.style.opacity = "0.4";
     setTimeout(connect, 2000);
   };
 }
@@ -107,8 +109,10 @@ function handleMessage(msg) {
       break;
     }
     case "vote_cast": {
-      const el = document.querySelector(`[data-pid="${msg.participantId}"]`);
-      if (el) el.classList.add("voted");
+      document.querySelectorAll(".vote-card").forEach(el => {
+        if (el.dataset.pid === msg.participantId) el.classList.add("voted");
+      });
+      renderParticipants();
       break;
     }
     case "votes_revealed":
@@ -129,13 +133,14 @@ function handleMessage(msg) {
     case "host_changed":
       if (state) state.hostId = msg.hostId;
       renderHostControls();
+      renderParticipants();
       break;
     case "settings_changed":
       if (state) state.numbers = msg.numbers;
       renderCards();
       break;
     case "error":
-      alert(msg.message);
+      alert("error: " + msg.message);
       break;
   }
 }
@@ -146,9 +151,11 @@ function renderParticipants() {
   if (!state) return;
   const list = document.getElementById("participantList");
   list.innerHTML = state.participants.map(p => `
-    <li style="display:flex;align-items:center;gap:0.5rem;padding:0.4rem 0;${p.id === state.hostId ? "color:#818cf8" : ""}">
-      <span style="width:8px;height:8px;border-radius:50%;background:${p.id === myId ? "#22c55e" : "#475569"}"></span>
-      ${p.name} ${p.id === state.hostId ? "👑" : ""} ${!p.canVote ? "🔇" : ""}
+    <li style="display:flex;align-items:center;gap:0.5rem;padding:0.3rem 0;
+      ${p.isHost ? "color:#33ff33;opacity:1" : "opacity:0.7"}">
+      <span style="font-size:0.65rem">${p.isHost ? "&#9830;" : "&#9679;"}</span>
+      ${p.name}
+      <span style="font-size:0.6rem;opacity:0.4">${p.isHost ? "(HOST)" : ""}</span>
     </li>
   `).join("");
 }
@@ -158,20 +165,30 @@ function renderCards() {
   const grid = document.getElementById("cardGrid");
   grid.innerHTML = state.numbers.map(n => `
     <button class="vote-card" data-value="${n}" style="
-      width:70px;height:100px;background:#1e293b;border:2px solid #334155;
-      border-radius:10px;font-size:1.3rem;font-weight:700;cursor:pointer;
-      display:flex;align-items:center;justify-content:center;transition:all 0.12s;
+      width:64px;height:88px;background:#0a0a0a;border:1px solid #33ff33;
+      color:#33ff33;font-family:inherit;font-size:1.1rem;font-weight:600;cursor:pointer;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      transition:all 0.1s;opacity:0.8;
     ">${n}</button>
   `).join("");
 
+  const round = state.currentRound;
+  const votedPids = round && round.status === "voting"
+    ? new Set(
+        state.participants
+          .filter(p => document.querySelector(`[data-pid="${p.id}"].voted`))
+          .map(p => p.id)
+      )
+    : new Set();
+
   grid.querySelectorAll(".vote-card").forEach(btn => {
     btn.addEventListener("click", () => {
+      if (!state?.currentRound || state.currentRound.status !== "voting") return;
       const value = btn.dataset.value;
       send({ type: "vote", value });
+      btn.dataset.pid = myId;
       grid.querySelectorAll(".vote-card").forEach(b => b.classList.remove("selected"));
       btn.classList.add("selected");
-      btn.style.borderColor = "#6366f1";
-      btn.style.background = "#2e1065";
     });
   });
 }
@@ -180,9 +197,9 @@ function renderRoundInfo() {
   const el = document.getElementById("roundInfo");
   if (state?.currentRound) {
     const r = state.currentRound;
-    el.textContent = `Round ${r.number}${r.topic ? ` — ${r.topic}` : ""} | ${r.status}`;
+    el.textContent = `round ${r.number}${r.topic ? ` — ${r.topic}` : ""} — ${r.status}`;
   } else {
-    el.textContent = "No active round";
+    el.textContent = "no active round. host: [new round]";
   }
 }
 
@@ -196,9 +213,12 @@ function renderResults(votes) {
   area.style.display = "block";
   const grid = document.getElementById("resultsGrid");
   grid.innerHTML = state.participants.map(p => `
-    <div style="background:#1e293b;border-radius:8px;padding:0.75rem 1rem;text-align:center;min-width:80px">
-      <div style="font-size:1.5rem;font-weight:700">${votes[p.id] ?? "—"}</div>
-      <div style="font-size:0.75rem;color:#94a3b8;margin-top:0.25rem">${p.name}</div>
+    <div style="
+      border:1px solid #33ff33;padding:0.5rem 0.75rem;text-align:center;min-width:70px;
+      background:#0a0a0a;
+    ">
+      <div style="font-size:1.3rem;font-weight:600">${votes[p.id] ?? "—"}</div>
+      <div style="font-size:0.6rem;opacity:0.5;margin-top:0.2rem">${p.name}</div>
     </div>
   `).join("");
 }
@@ -208,7 +228,7 @@ connect();
 document.getElementById("revealBtn")?.addEventListener("click", () => send({ type: "reveal" }));
 document.getElementById("clearBtn")?.addEventListener("click", () => send({ type: "clear_round" }));
 document.getElementById("newRoundBtn")?.addEventListener("click", () => {
-  const topic = prompt("Round topic (optional):") || "";
+  const topic = prompt("round topic:") || "";
   send({ type: "new_round", topic });
 });
 document.getElementById("leaveBtn")?.addEventListener("click", () => {
@@ -218,7 +238,25 @@ document.getElementById("leaveBtn")?.addEventListener("click", () => {
 </script>
 
 <style>
-  .vote-card:hover { border-color: #6366f1 !important; transform: translateY(-2px); }
-  .vote-card.selected { border-color: #6366f1; background: #2e1065; }
-  .vote-card { position: relative; }
+  .vote-card:hover {
+    background: #1a1a1a !important;
+    box-shadow: 0 0 8px rgba(51,255,51,0.2);
+  }
+  .vote-card.selected {
+    background: #1a3a1a !important;
+    border-color: #33ff33;
+    box-shadow: 0 0 12px rgba(51,255,51,0.3);
+    opacity: 1;
+  }
+  .cmd-btn {
+    background: transparent !important;
+    color: #33ff33 !important;
+    border: 1px solid #33ff33 !important;
+    font-size: 0.75rem !important;
+    padding: 0.35rem 0.85rem !important;
+  }
+  .cmd-btn:hover {
+    background: #33ff33 !important;
+    color: #0a0a0a !important;
+  }
 </style>

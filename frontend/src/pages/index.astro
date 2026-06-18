@@ -2,42 +2,80 @@
 import Layout from "../layouts/Layout.astro";
 ---
 
-<Layout title="EstiMate - Planning Poker">
-  <section style="text-align:center;padding-top:4rem">
-    <h1 style="font-size:3rem;font-weight:800;letter-spacing:-0.02em">EstiMate</h1>
-    <p style="color:#94a3b8;margin:0.5rem 0 2rem">Planning poker for remote teams</p>
+<Layout title="EstiMate — planning poker">
+  <div style="text-align:center;padding:1rem 0">
+    <pre style="
+      color: #33ff33;
+      font-size: 0.6rem;
+      line-height: 1.15;
+      text-shadow: 0 0 4px rgba(51,255,51,0.3);
+    ">  ______    _ _   __  __       _
+ |  ____|  (_) | |  \/  |     | |
+ | |__ __ _ _| |_| \  / | __ _| |_ ___  ___
+ |  __/ _` | | __| |\/| |/ _` | __/ _ \/ __|
+ | | | (_| | | |_| |  | | (_| | ||  __/\__ \
+ |_|  \__,_|_|\__|_|  |_|\__,_|\__\___||___/
+    </pre>
+    <p style="color:#33ff33;opacity:0.6;font-size:0.8rem;margin:-0.5rem 0 2rem">
+      &gt; planning poker for remote teams
+    </p>
+  </div>
 
-    <form id="createForm" style="max-width:400px;margin:0 auto;display:flex;flex-direction:column;gap:0.75rem">
-      <input type="text" id="hostName" placeholder="Your name" required />
-      <button type="submit">Create Room</button>
+  <hr class="divider" />
+
+  <div style="max-width:420px;margin:0 auto">
+    <p class="prompt">$ ./create-room --name</p>
+    <form id="createForm" style="display:flex;flex-direction:column;gap:0.5rem;margin-bottom:1.5rem">
+      <input type="text" id="hostName" placeholder="your name" required autocomplete="off" />
+      <button type="submit" id="createBtn">[ Create ]</button>
     </form>
 
-    <div style="margin:1.5rem 0;color:#475569">or</div>
+    <hr class="divider" />
 
-    <form id="joinForm" style="max-width:400px;margin:0 auto;display:flex;flex-direction:column;gap:0.75rem">
-      <input type="text" id="joinCode" placeholder="Room code" required />
-      <input type="text" id="joinName" placeholder="Your name" required />
-      <button type="submit">Join Room</button>
+    <p class="prompt">$ ./join-room --code --name</p>
+    <form id="joinForm" style="display:flex;flex-direction:column;gap:0.5rem">
+      <input type="text" id="joinCode" placeholder="room code" required autocomplete="off" maxlength="6" style="text-transform:uppercase" />
+      <input type="text" id="joinName" placeholder="your name" required autocomplete="off" />
+      <button type="submit" id="joinBtn">[ Join ]</button>
     </form>
-  </section>
+
+    <div id="status" style="margin-top:1rem;font-size:0.8rem;color:#33ff33;opacity:0.5;text-align:center">█</div>
+  </div>
 </Layout>
 
 <script>
-document.getElementById("createForm")?.addEventListener("submit", async (e) => {
+function $(id) { return document.getElementById(id); }
+
+function setStatus(msg) {
+  const el = $("status");
+  el.textContent = msg;
+  el.style.opacity = "0.7";
+}
+
+$("createForm")?.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const hostName = (document.getElementById("hostName") as HTMLInputElement).value.trim();
-  if (!hostName) return;
-  const res = await fetch("/api/rooms", { method: "POST", body: JSON.stringify({ hostName }) });
-  if (!res.ok) return alert("Failed to create room");
-  const room = await res.json();
-  window.location.href = `/room?code=${room.id}&name=${encodeURIComponent(hostName)}&host=1`;
+  const name = $("hostName").value.trim();
+  if (!name) return;
+  const btn = $("createBtn");
+  btn.disabled = true;
+  setStatus("> creating room...");
+  try {
+    const res = await fetch("/api/rooms", { method: "POST", body: JSON.stringify({ hostName: name }) });
+    if (!res.ok) throw new Error("request failed");
+    const room = await res.json();
+    window.location.href = `/room?code=${room.id}&name=${encodeURIComponent(name)}&host=1`;
+  } catch (e) {
+    setStatus("> error: " + e.message);
+    btn.disabled = false;
+  }
 });
 
-document.getElementById("joinForm")?.addEventListener("submit", (e) => {
+$("joinForm")?.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const code = (document.getElementById("joinCode") as HTMLInputElement).value.trim().toUpperCase();
-  const name = (document.getElementById("joinName") as HTMLInputElement).value.trim();
+  const code = $("joinCode").value.trim().toUpperCase();
+  const name = $("joinName").value.trim();
   if (!code || !name) return;
+  setStatus("> joining room " + code + "...");
   window.location.href = `/room?code=${code}&name=${encodeURIComponent(name)}`;
 });
 </script>
