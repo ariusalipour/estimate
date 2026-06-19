@@ -197,6 +197,7 @@ function initTerminalApp() {
       settings.participantId = session.participantId;
       settings.lastRoomKey = session.roomKey;
       settings.lastRoomName = session.roomName;
+      settings.lastRoomPassword = password;
       currentState = session.state;
       saveSettings(settings);
       connectSocket();
@@ -390,7 +391,7 @@ function initTerminalApp() {
 
     return [
       border(roomWidth),
-      row(`room: ${state.roomName}    key: ${state.id}`, roomWidth),
+      row(`room: ${state.roomName}    password: ${currentPassword()}`, roomWidth),
       row(`reveal: ${state.revealed ? "open" : "hidden"}    participants: ${state.participants.length}`, roomWidth),
       row(`overall estimate: ${average}`, roomWidth),
       border(roomWidth),
@@ -408,6 +409,14 @@ function initTerminalApp() {
     promptLabel = currentState ? `${currentState.roomName}> ` : "> ";
     promptCount += 1;
     term.write(`${promptLabel}${input}`);
+  }
+
+  function currentPassword() {
+    if (currentState && currentState.id === settings.lastRoomKey && settings.lastRoomPassword) {
+      return settings.lastRoomPassword;
+    }
+
+    return "<unknown>";
   }
 }
 
@@ -472,6 +481,7 @@ function loadSettings() {
       participantId: crypto.randomUUID(),
       lastRoomKey: "",
       lastRoomName: "",
+      lastRoomPassword: "",
     };
   }
 
@@ -482,6 +492,7 @@ function loadSettings() {
       participantId: parsed.participantId || crypto.randomUUID(),
       lastRoomKey: parsed.lastRoomKey ?? "",
       lastRoomName: parsed.lastRoomName ?? "",
+      lastRoomPassword: parsed.lastRoomPassword ?? "",
     };
   } catch {
     return {
@@ -489,6 +500,7 @@ function loadSettings() {
       participantId: crypto.randomUUID(),
       lastRoomKey: "",
       lastRoomName: "",
+      lastRoomPassword: "",
     };
   }
 }
