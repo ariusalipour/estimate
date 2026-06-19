@@ -278,48 +278,13 @@ function initTerminalApp() {
   }
 
   async function handleJoin(args) {
-    if (args.length < 1) {
+    if (args.length < 2) {
       term.writeln("Usage: join <room> <password>");
       return;
     }
 
     const userName = ensureName();
     if (!userName) {
-      return;
-    }
-
-    if (args.length === 1) {
-      const roomKey = args[0];
-      statusLine = `Joining room link ${roomKey}...`;
-      refresh();
-
-      try {
-        const session = await postJson("/api/session/room", {
-          roomKey,
-          roomName: pendingQuickJoin?.roomName || settings.lastRoomName,
-          participantId: settings.participantId,
-          participantName: userName,
-        });
-
-        currentRoomKey = session.roomKey;
-        settings.participantId = session.participantId;
-        settings.lastRoomKey = session.roomKey;
-        settings.lastRoomName = session.roomName;
-        if (pendingQuickJoin) {
-          settings.lastRoomPassword = pendingQuickJoin.password;
-        }
-        currentState = session.state;
-        saveSettings(settings);
-        if (settings.lastRoomName && settings.lastRoomPassword) {
-          window.history.replaceState({}, "", currentQuickJoinPath(settings.lastRoomName, settings.lastRoomPassword));
-        }
-        connectSocket();
-        statusLine = `Joined ${session.roomName}.`;
-        refresh();
-      } catch (error) {
-        statusLine = error instanceof Error ? error.message : String(error);
-        refresh();
-      }
       return;
     }
 
