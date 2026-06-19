@@ -147,8 +147,19 @@ export class RoomDO extends DurableObject<Env> {
 
     server.addEventListener("close", () => {
       this.sessions.delete(server);
-      this.ctx.storage.sql.exec("UPDATE participants SET online = 0 WHERE id = ?", participantId);
       const name = this.participantName(participantId);
+      this.ctx.storage.sql.exec("DELETE FROM votes WHERE participant_id = ?", participantId);
+      this.ctx.storage.sql.exec("DELETE FROM participants WHERE id = ?", participantId);
+      const remainingParticipants = this.ctx.storage.sql.exec<{ count: number }>(
+        "SELECT COUNT(*) as count FROM participants",
+      ).toArray()[0]?.count ?? 0;
+
+      if (remainingParticipants === 0) {
+        this.ctx.storage.sql.exec("DELETE FROM votes");
+        this.ctx.storage.sql.exec("DELETE FROM room");
+        return;
+      }
+
       this.touchRoom();
       this.broadcast({ type: "system", message: `${name} left room.` });
       this.broadcastState();

@@ -388,12 +388,7 @@ function initTerminalApp() {
         const marker = participant.online ? "@" : "-";
         const vote = state.revealed ? (participant.vote ?? "-") : (participant.hasVoted ? "*" : ".");
         return `${marker} ${participant.name} [${vote}]`;
-      })
-      .slice(0, 10);
-
-    while (users.length < 10) {
-      users.push("");
-    }
+      });
 
     const average = state.summary.average === null ? "n/a" : String(state.summary.average);
 
@@ -406,6 +401,7 @@ function initTerminalApp() {
       row(`VOTE ROM : ${voteLine}`, roomWidth),
       sectionBorder("ROOM BUS", roomWidth),
       ...users.map((line) => row(line, roomWidth)),
+      row("", roomWidth),
       border(roomWidth),
       row("CONTROL BUS", roomWidth),
       row("  VOTE <VALUE>   REVEAL   CLEAR   LEAVE   ROOM   HELP", roomWidth),
