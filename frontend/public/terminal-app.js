@@ -179,6 +179,7 @@ function initTerminalApp() {
   });
 
   printBoot();
+  ensureQuickJoinDisplayName();
   refresh();
 
   function printBoot() {
@@ -625,6 +626,26 @@ function initTerminalApp() {
   } else if (pendingQuickJoin) {
     awaitingQuickJoinName = true;
     statusLine = "QUICK JOIN LINK DETECTED. ENTER NAME TO BOOT ROOM.";
+  }
+
+  function ensureQuickJoinDisplayName() {
+    if (!pendingQuickJoin || settings.name) {
+      return;
+    }
+
+    const name = window.prompt("Enter display name to join this planning poker room:", "")?.trim();
+    if (!name) {
+      return;
+    }
+
+    settings.name = name;
+    saveSettings(settings);
+    awaitingQuickJoinName = false;
+    term.writeln(`Name saved: ${name}`);
+
+    queueMicrotask(() => {
+      void handleQuickJoin();
+    });
   }
 }
 
