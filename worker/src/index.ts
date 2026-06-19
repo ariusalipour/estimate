@@ -36,7 +36,15 @@ export default {
     }
 
     if (request.method === "GET" && !url.pathname.includes(".")) {
-      return env.ASSETS.fetch(new Request(new URL("/index.html", request.url), request));
+      const assetResponse = await env.ASSETS.fetch(new Request(new URL("/index.html", request.url), {
+        method: "GET",
+        headers: request.headers,
+      }));
+
+      return new Response(assetResponse.body, {
+        status: 200,
+        headers: assetResponse.headers,
+      });
     }
 
     return env.ASSETS.fetch(request);

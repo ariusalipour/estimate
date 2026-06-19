@@ -279,7 +279,6 @@ function initTerminalApp() {
   async function handleJoin(args) {
     if (args.length < 1) {
       term.writeln("Usage: join <room> <password>");
-      term.writeln("   or: join <room-id>");
       return;
     }
 
@@ -296,6 +295,7 @@ function initTerminalApp() {
       try {
         const session = await postJson("/api/session/room", {
           roomKey,
+          roomName: pendingQuickJoin?.roomName || settings.lastRoomName,
           participantId: settings.participantId,
           participantName: userName,
         });
@@ -409,11 +409,11 @@ function initTerminalApp() {
       return;
     }
 
-    statusLine = "Booting quick join link...";
+    statusLine = `AUTOPILOT: join ${pendingQuickJoin.roomName} ${pendingQuickJoin.password}`;
     refresh();
 
     try {
-      await handleJoin([pendingQuickJoin.roomName, pendingQuickJoin.password]);
+      await runCommand(`join "${pendingQuickJoin.roomName}" "${pendingQuickJoin.password}"`);
     } catch (error) {
       statusLine = error instanceof Error ? error.message : String(error);
       refresh();
@@ -619,7 +619,9 @@ function initTerminalApp() {
   }
 
   if (pendingQuickJoin && settings.name) {
-    void handleQuickJoin();
+    queueMicrotask(() => {
+      void handleQuickJoin();
+    });
   } else if (pendingQuickJoin) {
     awaitingQuickJoinName = true;
     statusLine = "QUICK JOIN LINK DETECTED. ENTER NAME TO BOOT ROOM.";
