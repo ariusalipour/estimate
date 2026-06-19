@@ -41,35 +41,78 @@ function initTerminalApp() {
 
   term.registerLinkProvider({
     provideLinks(y, callback) {
-      const linkText = currentState ? currentQuickJoinLabel(currentState.roomName) : null;
-      if (!linkText) {
-        callback([]);
-        return;
-      }
-
       const line = term.buffer.active.getLine(y - 1)?.translateToString(true) ?? "";
-      const start = line.indexOf(linkText);
-      if (start === -1) {
-        callback([]);
-        return;
+      const links = [];
+
+      if (currentState) {
+        const linkText = currentQuickJoinLabel(currentState.roomName);
+        const start = line.indexOf(linkText);
+
+        if (start !== -1) {
+          links.push({
+            range: {
+              start: { x: start + 1, y },
+              end: { x: start + linkText.length, y },
+            },
+            text: linkText,
+            activate: async () => {
+              try {
+                await navigator.clipboard.writeText(currentQuickJoinUrl(currentState.id));
+                statusLine = "QUICK JOIN LINK COPIED TO CLIPBOARD.";
+              } catch {
+                statusLine = "CLIPBOARD COPY FAILED.";
+              }
+              refresh();
+            },
+          });
+        }
+
+        if (line.includes("VOTE ROM : ")) {
+          let searchFrom = line.indexOf("VOTE ROM : ") + "VOTE ROM : ".length;
+          for (const value of currentState.numbers) {
+            const valueStart = line.indexOf(value, searchFrom);
+            if (valueStart === -1) {
+              continue;
+            }
+
+            searchFrom = valueStart + value.length;
+            links.push({
+              range: {
+                start: { x: valueStart + 1, y },
+                end: { x: valueStart + value.length, y },
+              },
+              text: value,
+              activate: () => {
+                void runCommand(`vote ${value}`);
+              },
+            });
+          }
+        }
       }
 
-      callback([{
-        range: {
-          start: { x: start + 1, y },
-          end: { x: start + linkText.length, y },
-        },
-        text: linkText,
-        activate: async () => {
-          try {
-            await navigator.clipboard.writeText(currentQuickJoinUrl(currentState.id));
-            statusLine = "QUICK JOIN LINK COPIED TO CLIPBOARD.";
-          } catch {
-            statusLine = "CLIPBOARD COPY FAILED.";
-          }
-          refresh();
-        },
-      }]);
+      for (const action of commandActions()) {
+        const start = line.indexOf(action.label);
+        if (start === -1) {
+          continue;
+        }
+
+        links.push({
+          range: {
+            start: { x: start + 1, y },
+            end: { x: start + action.label.length, y },
+          },
+          text: action.label,
+          activate: () => {
+            if (action.run) {
+              void runCommand(action.run);
+            } else if (action.prefill) {
+              prefillCommand(action.prefill);
+            }
+          },
+        });
+      }
+
+      callback(links);
     },
   });
 
@@ -83,6 +126,7 @@ function initTerminalApp() {
   let promptCount = 0;
   let isRendering = false;
   let statusLine = "READY. TYPE HELP FOR COMMAND INDEX.";
+  let awaitingQuickJoinName = false;
 
   window.addEventListener("resize", () => {
     fitAddon.fit();
@@ -95,6 +139,16 @@ function initTerminalApp() {
       const promptBefore = promptCount;
       input = "";
       term.write("\r\n");
+
+      if (awaitingQuickJoinName) {
+        awaitingQuickJoinName = false;
+        handleName([command]);
+        if (promptCount === promptBefore) {
+          renderPrompt();
+        }
+        return;
+      }
+
       void Promise.resolve(runCommand(command)).finally(() => {
         if (promptCount === promptBefore) {
           renderPrompt();
@@ -113,6 +167,7 @@ function initTerminalApp() {
 
     if (data === "\u0003") {
       input = "";
+      awaitingQuickJoinName = false;
       term.write("^C\r\n");
       renderPrompt();
       return;
@@ -205,7 +260,10 @@ function initTerminalApp() {
   function handleName(args) {
     const name = args.join(" ").trim();
     if (!name) {
-      term.writeln("Usage: name <display-name>");
+      term.writeln(awaitingQuickJoinName ? "Name required for quick join." : "Usage: name <display-name>");
+      if (pendingQuickJoinRoomKey && !currentState) {
+        awaitingQuickJoinName = true;
+      }
       return;
     }
 
@@ -364,6 +422,12 @@ function initTerminalApp() {
     if (settings.name) {
       return settings.name;
     }
+    if (pendingQuickJoinRoomKey && !currentState) {
+      awaitingQuickJoinName = true;
+      statusLine = "QUICK JOIN REQUIRES NAME. ENTER NAME NOW.";
+      refresh();
+      return "";
+    }
     term.writeln("Set name first: name <display-name>");
     return "";
   }
@@ -490,9 +554,39 @@ function initTerminalApp() {
   }
 
   function renderPrompt() {
-    promptLabel = currentState ? `${currentState.roomName}> ` : "> ";
+    if (awaitingQuickJoinName) {
+      promptLabel = "NAME> ";
+    } else {
+      promptLabel = currentState ? `${currentState.roomName}> ` : "> ";
+    }
     promptCount += 1;
     term.write(`${promptLabel}${input}`);
+  }
+
+  function prefillCommand(value) {
+    input = value;
+    statusLine = `COMMAND LOADED: ${value}`;
+    refresh();
+  }
+
+  function commandActions() {
+    if (!currentState) {
+      return [
+        { label: "NAME", prefill: "name " },
+        { label: "JOIN", prefill: "join " },
+        { label: "REJOIN", run: "rejoin" },
+        { label: "HELP", run: "help" },
+      ];
+    }
+
+    return [
+      { label: "VOTE <VALUE>", prefill: "vote " },
+      { label: "REVEAL", run: "reveal" },
+      { label: "CLEAR", run: "clear" },
+      { label: "LEAVE", run: "leave" },
+      { label: "ROOM", run: "room" },
+      { label: "HELP", run: "help" },
+    ];
   }
 
   function currentPassword() {
@@ -506,7 +600,8 @@ function initTerminalApp() {
   if (pendingQuickJoinRoomKey && settings.name) {
     void handleQuickJoin();
   } else if (pendingQuickJoinRoomKey) {
-    statusLine = "QUICK JOIN LINK DETECTED. SET NAME TO BOOT ROOM.";
+    awaitingQuickJoinName = true;
+    statusLine = "QUICK JOIN LINK DETECTED. ENTER NAME TO BOOT ROOM.";
   }
 }
 
