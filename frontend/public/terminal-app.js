@@ -55,14 +55,8 @@ function initTerminalApp() {
               end: { x: start + linkText.length, y },
             },
             text: linkText,
-            activate: async () => {
-              try {
-                await navigator.clipboard.writeText(currentQuickJoinUrl(currentState.id));
-                statusLine = "QUICK JOIN LINK COPIED TO CLIPBOARD.";
-              } catch {
-                statusLine = "CLIPBOARD COPY FAILED.";
-              }
-              refresh();
+            activate: () => {
+              window.location.href = currentQuickJoinPath(currentState.id);
             },
           });
         }
@@ -91,7 +85,7 @@ function initTerminalApp() {
       }
 
       for (const action of commandActions()) {
-        const start = line.indexOf(action.label);
+        const start = findCommandLabelStart(line, action.label);
         if (start === -1) {
           continue;
         }
@@ -278,17 +272,48 @@ function initTerminalApp() {
   }
 
   async function handleJoin(args) {
-    if (args.length < 2) {
+    if (args.length < 1) {
       term.writeln("Usage: join <room> <password>");
+      term.writeln("   or: join <room-id>");
+      return;
+    }
+
+    const userName = ensureName();
+    if (!userName) {
+      return;
+    }
+
+    if (args.length === 1) {
+      const roomKey = args[0];
+      statusLine = `Joining room link ${roomKey}...`;
+      refresh();
+
+      try {
+        const session = await postJson("/api/session/room", {
+          roomKey,
+          participantId: settings.participantId,
+          participantName: userName,
+        });
+
+        currentRoomKey = session.roomKey;
+        settings.participantId = session.participantId;
+        settings.lastRoomKey = session.roomKey;
+        settings.lastRoomName = session.roomName;
+        currentState = session.state;
+        saveSettings(settings);
+        window.history.replaceState({}, "", currentQuickJoinPath(session.roomKey));
+        connectSocket();
+        statusLine = `Joined ${session.roomName}.`;
+        refresh();
+      } catch (error) {
+        statusLine = error instanceof Error ? error.message : String(error);
+        refresh();
+      }
       return;
     }
 
     const roomName = args[0];
     const password = args.slice(1).join(" ");
-    const userName = ensureName();
-    if (!userName) {
-      return;
-    }
 
     statusLine = `Joining room ${roomName}...`;
     refresh();
@@ -538,7 +563,7 @@ function initTerminalApp() {
     return [
       border(roomWidth),
       row(`ROOM : ${state.roomName}    PASSWORD : ${currentPassword()}`, roomWidth),
-      row(`QUICK JOIN : ${currentQuickJoinLabel(state.roomName)} [CLICK TO COPY]`, roomWidth),
+      row(`QUICK JOIN : ${currentQuickJoinLabel(state.roomName)} [CLICK TO JOIN]`, roomWidth),
       row(`REVEAL : ${state.revealed ? "OPEN" : "HIDDEN"}    PARTICIPANTS : ${state.participants.length}`, roomWidth),
       row(`SYSTEM ESTIMATE : ${average}`, roomWidth),
       border(roomWidth),
@@ -629,6 +654,20 @@ function sectionBorder(label, width) {
   const left = Math.floor((total - text.length) / 2);
   const right = total - text.length - left;
   return `+${"-".repeat(left)}${text}${"-".repeat(right)}+`;
+}
+
+function findCommandLabelStart(line, label) {
+  const start = line.indexOf(label);
+  if (start === -1) {
+    return -1;
+  }
+
+  const before = start === 0 ? "" : line[start - 1];
+  const after = start + label.length >= line.length ? "" : line[start + label.length];
+  const beforeOk = !/[A-Z0-9<>-]/.test(before);
+  const afterOk = !/[A-Z0-9<>-]/.test(after);
+
+  return beforeOk && afterOk ? start : -1;
 }
 
 function currentQuickJoinUrl(roomKey) {
