@@ -141,7 +141,7 @@ function initTerminalApp() {
       term.writeln(`LAST ROOM IMAGE ................... ${settings.lastRoomName}`);
     }
     if (pendingQuickJoinRoomKey) {
-      term.writeln(`BOOT LINK ........................ ${pendingQuickJoinRoomKey}`);
+      term.writeln("BOOT LINK ........................ QUICK JOIN LINK DETECTED");
     }
     term.writeln("");
   }
@@ -474,7 +474,7 @@ function initTerminalApp() {
     return [
       border(roomWidth),
       row(`ROOM : ${state.roomName}    PASSWORD : ${currentPassword()}`, roomWidth),
-      row(`QUICK JOIN : ${currentQuickJoinPath(state.id)} [CLICK TO COPY]`, roomWidth),
+      row("QUICK JOIN : [CLICK TO COPY ROOM LINK]", roomWidth),
       row(`REVEAL : ${state.revealed ? "OPEN" : "HIDDEN"}    PARTICIPANTS : ${state.participants.length}`, roomWidth),
       row(`SYSTEM ESTIMATE : ${average}`, roomWidth),
       border(roomWidth),
@@ -506,7 +506,7 @@ function initTerminalApp() {
   if (pendingQuickJoinRoomKey && settings.name) {
     void handleQuickJoin();
   } else if (pendingQuickJoinRoomKey) {
-    statusLine = `QUICK JOIN READY FOR ${pendingQuickJoinRoomKey}. SET NAME TO BOOT.`;
+    statusLine = "QUICK JOIN LINK DETECTED. SET NAME TO BOOT ROOM.";
   }
 }
 
