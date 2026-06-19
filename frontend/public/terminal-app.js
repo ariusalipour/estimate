@@ -41,14 +41,14 @@ function initTerminalApp() {
 
   term.registerLinkProvider({
     provideLinks(y, callback) {
-      const path = currentState ? currentQuickJoinPath(currentState.id) : null;
-      if (!path) {
+      const linkText = currentState ? currentQuickJoinLabel(currentState.roomName) : null;
+      if (!linkText) {
         callback([]);
         return;
       }
 
       const line = term.buffer.active.getLine(y - 1)?.translateToString(true) ?? "";
-      const start = line.indexOf(path);
+      const start = line.indexOf(linkText);
       if (start === -1) {
         callback([]);
         return;
@@ -57,9 +57,9 @@ function initTerminalApp() {
       callback([{
         range: {
           start: { x: start + 1, y },
-          end: { x: start + path.length, y },
+          end: { x: start + linkText.length, y },
         },
-        text: path,
+        text: linkText,
         activate: async () => {
           try {
             await navigator.clipboard.writeText(currentQuickJoinUrl(currentState.id));
@@ -315,7 +315,7 @@ function initTerminalApp() {
       return;
     }
 
-    statusLine = `Booting quick join ${pendingQuickJoinRoomKey}...`;
+    statusLine = "Booting quick join link...";
     refresh();
 
     try {
@@ -474,7 +474,7 @@ function initTerminalApp() {
     return [
       border(roomWidth),
       row(`ROOM : ${state.roomName}    PASSWORD : ${currentPassword()}`, roomWidth),
-      row("QUICK JOIN : [CLICK TO COPY ROOM LINK]", roomWidth),
+      row(`QUICK JOIN : ${currentQuickJoinLabel(state.roomName)} [CLICK TO COPY]`, roomWidth),
       row(`REVEAL : ${state.revealed ? "OPEN" : "HIDDEN"}    PARTICIPANTS : ${state.participants.length}`, roomWidth),
       row(`SYSTEM ESTIMATE : ${average}`, roomWidth),
       border(roomWidth),
@@ -538,6 +538,10 @@ function sectionBorder(label, width) {
 
 function currentQuickJoinUrl(roomKey) {
   return `${window.location.origin}${currentQuickJoinPath(roomKey)}`;
+}
+
+function currentQuickJoinLabel(roomName) {
+  return `<${roomName}>`;
 }
 
 function currentQuickJoinPath(roomKey) {
