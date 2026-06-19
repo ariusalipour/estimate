@@ -2,85 +2,15 @@
 import Layout from "../layouts/Layout.astro";
 ---
 
-<Layout title="EstiMate — planning poker">
-  <div style="text-align:center;padding:1rem 0">
-    <pre style="
-      font-family: 'Fira Code', monospace;
-      font-size: 0.7rem;
-      line-height: 1.15;
-      color: #33ff33;
-      text-shadow: 0 0 6px rgba(51,255,51,0.25);
-      display: inline-block;
-      text-align: left;
-      margin: 0 auto;
-      letter-spacing: 0.02em;
-    ">
-  ███████  █████  ███████ ███████ ████████
-  ██      ██   ██ ██      ██         ██
-  █████   ███████ ███████ █████      ██
-  ██      ██   ██      ██ ██         ██
-  ██      ██   ██ ███████ ███████    ██
-    </pre>
-    <p style="color:#33ff33;opacity:0.5;font-size:0.75rem;margin-top:0.25rem">
-      &gt; planning poker for remote teams
-    </p>
-  </div>
-
-  <hr class="divider" />
-
-  <div style="max-width:420px;margin:0 auto">
-    <p class="prompt">$ ./create-room --name</p>
-    <form id="createForm" style="display:flex;flex-direction:column;gap:0.5rem;margin-bottom:1.5rem">
-      <input type="text" id="hostName" placeholder="your name" required autocomplete="off" />
-      <button type="submit" id="createBtn">[ Create ]</button>
-    </form>
-
-    <hr class="divider" />
-
-    <p class="prompt">$ ./join-room --code --name</p>
-    <form id="joinForm" style="display:flex;flex-direction:column;gap:0.5rem">
-      <input type="text" id="joinCode" placeholder="room code" required autocomplete="off" maxlength="6" style="text-transform:uppercase" />
-      <input type="text" id="joinName" placeholder="your name" required autocomplete="off" />
-      <button type="submit" id="joinBtn">[ Join ]</button>
-    </form>
-
-    <div id="status" style="margin-top:1rem;font-size:0.8rem;color:#33ff33;opacity:0.5;text-align:center">█</div>
-  </div>
+<Layout title="EstiMate">
+  <div id="terminal-root"></div>
 </Layout>
 
-<script>
-function $(id) { return document.getElementById(id); }
+<script type="module" src="/terminal-app.js"></script>
 
-function setStatus(msg) {
-  const el = $("status");
-  el.textContent = msg;
-  el.style.opacity = "0.7";
-}
-
-$("createForm")?.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const name = $("hostName").value.trim();
-  if (!name) return;
-  const btn = $("createBtn");
-  btn.disabled = true;
-  setStatus("> creating room...");
-  try {
-    const res = await fetch("/api/rooms", { method: "POST", body: JSON.stringify({ hostName: name }) });
-    if (!res.ok) throw new Error("request failed");
-    const room = await res.json();
-    window.location.href = `/room?code=${room.id}&name=${encodeURIComponent(name)}&host=1`;
-  } catch (e) {
-    setStatus("> error: " + e.message);
-    btn.disabled = false;
+<style>
+  #terminal-root {
+    width: 100%;
+    height: 100%;
   }
-});
-
-$("joinForm")?.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const code = $("joinCode").value.trim().toUpperCase();
-  const name = $("joinName").value.trim();
-  if (!code || !name) return;
-  setStatus("> joining room " + code + "...");
-  window.location.href = `/room?code=${code}&name=${encodeURIComponent(name)}`;
-});
-</script>
+</style>

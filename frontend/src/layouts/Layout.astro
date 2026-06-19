@@ -2,182 +2,100 @@
 export interface Props {
   title?: string;
 }
+
 const { title = "EstiMate" } = Astro.props;
 ---
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
+    <link rel="stylesheet" href="https://unpkg.com/xterm@5.3.0/css/xterm.css" />
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600;700&display=swap');
+      :root {
+        color-scheme: dark;
+        --bg: #050805;
+        --panel: #0b120b;
+        --bar: #101710;
+        --text: #8bff8b;
+        --text-dim: rgba(139, 255, 139, 0.62);
+        --line: rgba(139, 255, 139, 0.28);
+      }
 
-      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      * { box-sizing: border-box; }
 
-      body {
-        font-family: "Fira Code", "Cascadia Code", "JetBrains Mono", "Consolas", monospace;
-        background: #0a0a0a;
-        color: #33ff33;
-        min-height: 100vh;
-        line-height: 1.6;
-        position: relative;
+      html, body {
+        margin: 0;
+        min-height: 100%;
+        background: radial-gradient(circle at top, #0d170d, var(--bg) 48%);
+        color: var(--text);
+        font-family: "Fira Code", "Cascadia Code", "JetBrains Mono", monospace;
       }
 
       body::before {
         content: "";
         position: fixed;
         inset: 0;
+        pointer-events: none;
         background: repeating-linear-gradient(
           0deg,
-          transparent,
-          transparent 2px,
-          rgba(0, 255, 0, 0.015) 2px,
-          rgba(0, 255, 0, 0.015) 4px
+          transparent 0,
+          transparent 3px,
+          rgba(139, 255, 139, 0.025) 3px,
+          rgba(139, 255, 139, 0.025) 4px
         );
-        pointer-events: none;
-        z-index: 9999;
       }
 
-      .terminal {
-        max-width: 960px;
-        margin: 2rem auto;
-        border: 1px solid #33ff33;
-        border-radius: 0;
-        position: relative;
-        box-shadow: 0 0 20px rgba(51, 255, 51, 0.1);
+      main {
+        min-height: 100vh;
+        width: 100vw;
       }
 
-      .terminal-bar {
-        background: #1a1a1a;
-        border-bottom: 1px solid #33ff33;
-        padding: 0.5rem 1rem;
+      .shell {
+        width: 100vw;
+        min-height: 100vh;
+        border: 0;
+        background: linear-gradient(180deg, rgba(13, 24, 13, 0.95), rgba(5, 8, 5, 0.98));
+      }
+
+      .shell-bar {
         display: flex;
-        align-items: center;
         justify-content: space-between;
-        gap: 0.5rem;
-      }
-
-      .terminal-dots {
-        display: flex;
-        gap: 6px;
-      }
-
-      .terminal-dot {
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        background: #33ff33;
-        opacity: 0.3;
-      }
-
-      .terminal-dot.close { opacity: 0.6; }
-      .terminal-dot.min { opacity: 0.4; }
-
-      .terminal-title {
-        color: #33ff33;
-        font-size: 0.8rem;
-        letter-spacing: 0.1em;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--line);
+        background: var(--bar);
+        font-size: 12px;
         text-transform: uppercase;
-        opacity: 0.7;
+        letter-spacing: 0.12em;
+        color: var(--text-dim);
       }
 
-      .terminal-body {
-        padding: 1.5rem;
-        background: #0d0d0d;
-        min-height: 60vh;
+      .shell-body {
+        height: calc(100vh - 43px);
+        padding: 10px;
+        background: var(--panel);
       }
 
-      h1, h2, h3 {
-        color: #33ff33;
-        font-weight: 600;
-      }
-
-      h1 { font-size: 1.4rem; }
-      h2 { font-size: 1.15rem; }
-      h3 { font-size: 1rem; }
-
-      input, select {
-        font-family: inherit;
-        font-size: 0.85rem;
-        color: #33ff33;
-        background: #0a0a0a;
-        border: 1px solid #33ff33;
-        padding: 0.55rem 0.75rem;
-        width: 100%;
-        outline: none;
-        border-radius: 0;
-      }
-
-      input:focus {
-        border-color: #33ff33;
-        box-shadow: 0 0 8px rgba(51, 255, 51, 0.3);
-      }
-
-      input::placeholder {
-        color: #33ff33;
-        opacity: 0.3;
-      }
-
-      button {
-        font-family: inherit;
-        font-size: 0.85rem;
-        color: #0a0a0a;
-        background: #33ff33;
-        border: 1px solid #33ff33;
-        padding: 0.55rem 1.25rem;
-        cursor: pointer;
-        border-radius: 0;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        transition: all 0.1s;
-      }
-
-      button:hover {
-        background: #0a0a0a;
-        color: #33ff33;
-      }
-
-      button:disabled {
-        opacity: 0.3;
-        cursor: not-allowed;
-        background: #33ff33;
-        color: #0a0a0a;
-      }
-
-      .prompt { color: #33ff33; opacity: 0.5; font-size: 0.8rem; margin-bottom: 0.25rem; }
-      .divider { border: none; border-top: 1px solid #33ff33; opacity: 0.2; margin: 1.5rem 0; }
-      .block-cursor::after {
-        content: "▊";
-        animation: blink 1s step-end infinite;
-        color: #33ff33;
-      }
-
-      @keyframes blink {
-        50% { opacity: 0; }
-      }
-
-      @media (max-width: 640px) {
-        .terminal { margin: 0.5rem; }
-        .terminal-body { padding: 1rem; }
+      @media (max-width: 720px) {
+        .shell-body { height: calc(100vh - 43px); }
       }
     </style>
   </head>
   <body>
-    <div class="terminal">
-      <div class="terminal-bar">
-        <div class="terminal-dots">
-          <span class="terminal-dot close"></span>
-          <span class="terminal-dot min"></span>
-          <span class="terminal-dot"></span>
+    <main>
+      <section class="shell">
+        <div class="shell-bar">
+          <span>estimate terminal</span>
+          <span>astro + durable objects</span>
         </div>
-        <span class="terminal-title">{title}</span>
-        <span style="color:#33ff33;font-size:0.75rem;opacity:0.4">v0.1</span>
-      </div>
-      <div class="terminal-body">
-        <slot />
-      </div>
-    </div>
+        <div class="shell-body">
+          <slot />
+        </div>
+      </section>
+    </main>
   </body>
 </html>

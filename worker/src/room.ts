@@ -1,274 +1,311 @@
 import { DurableObject } from "cloudflare:workers";
-import type { Env, Participant, Round, RoomState, ServerMessage } from "./types";
+import type { ClientMessage, Env, JoinRoomResponse, ParticipantState, RoomState, ServerMessage } from "./types";
+
+type SessionInfo = {
+  participantId: string;
+};
+
+type EnsureRoomPayload = {
+  roomKey: string;
+  roomName: string;
+  participantId: string;
+  participantName: string;
+};
+
+type RoomRow = {
+  id: string;
+  room_name: string;
+  numbers: string;
+  revealed: number;
+  created_at: number;
+  updated_at: number;
+};
+
+type ParticipantRow = {
+  id: string;
+  name: string;
+  online: number;
+  joined_at: number;
+};
+
+type VoteRow = {
+  participant_id: string;
+  value: string | null;
+  updated_at: number;
+};
+
+const defaultNumbers = ["0", "1", "2", "3", "5", "8", "13", "21", "34", "55", "89", "?"];
 
 export class RoomDO extends DurableObject<Env> {
-  private participants: Participant[] = [];
-  private sessions = new Map<string, WebSocket>();
+  private sessions = new Map<WebSocket, SessionInfo>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    ctx.blockConcurrencyWhile(() => {
+    ctx.blockConcurrencyWhile(async () => {
       ctx.storage.sql.exec(`
         CREATE TABLE IF NOT EXISTS room (
           id TEXT PRIMARY KEY,
-          host_id TEXT NOT NULL,
+          room_name TEXT NOT NULL,
           numbers TEXT NOT NULL,
-          status TEXT NOT NULL DEFAULT 'active',
+          revealed INTEGER NOT NULL DEFAULT 0,
           created_at INTEGER NOT NULL,
-          expires_at INTEGER NOT NULL,
-          last_active_at INTEGER NOT NULL
+          updated_at INTEGER NOT NULL
         )
       `);
       ctx.storage.sql.exec(`
         CREATE TABLE IF NOT EXISTS participants (
           id TEXT PRIMARY KEY,
           name TEXT NOT NULL,
-          is_host INTEGER NOT NULL DEFAULT 0,
-          can_vote INTEGER NOT NULL DEFAULT 1,
+          online INTEGER NOT NULL DEFAULT 0,
           joined_at INTEGER NOT NULL
         )
       `);
       ctx.storage.sql.exec(`
-        CREATE TABLE IF NOT EXISTS rounds (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          number INTEGER NOT NULL,
-          topic TEXT NOT NULL DEFAULT '',
-          status TEXT NOT NULL DEFAULT 'voting',
-          created_at INTEGER NOT NULL
-        )
-      `);
-      ctx.storage.sql.exec(`
         CREATE TABLE IF NOT EXISTS votes (
-          round_id INTEGER NOT NULL,
-          participant_id TEXT NOT NULL,
+          participant_id TEXT PRIMARY KEY,
           value TEXT,
-          voted_at INTEGER NOT NULL,
-          UNIQUE(round_id, participant_id)
+          updated_at INTEGER NOT NULL
         )
       `);
     });
   }
 
-  async createRoom(data: { id: string; hostName: string; numbers: string[] }): Promise<RoomState> {
-    const id = data.id;
+  async ensureRoom(payload: EnsureRoomPayload): Promise<JoinRoomResponse> {
     const now = Date.now();
-    const hostId = crypto.randomUUID();
-    const expiresAt = now + 7 * 24 * 60 * 60 * 1000;
+
+    this.createRoomIfMissing(payload.roomKey, payload.roomName, now);
 
     this.ctx.storage.sql.exec(
-      `INSERT INTO room (id, host_id, numbers, status, created_at, expires_at, last_active_at)
-       VALUES (?, ?, ?, 'active', ?, ?, ?)`,
-      id, hostId, JSON.stringify(data.numbers), now, expiresAt, now
+      `INSERT INTO participants (id, name, online, joined_at) VALUES (?, ?, 0, ?)
+       ON CONFLICT(id) DO UPDATE SET name = excluded.name`,
+      payload.participantId,
+      payload.participantName,
+      now,
     );
 
-    this.ctx.storage.sql.exec(
-      "INSERT INTO participants (id, name, is_host, can_vote, joined_at) VALUES (?, ?, 1, 1, ?)",
-      hostId, data.hostName, now
-    );
+    this.touchRoom();
 
-    await this.ctx.storage.setAlarm(expiresAt);
-
-    return this.buildState();
+    return {
+      roomKey: payload.roomKey,
+      roomName: (this.roomRow()?.room_name ?? payload.roomName),
+      participantId: payload.participantId,
+      state: this.buildState(),
+    };
   }
 
-  async getRoomState(): Promise<RoomState> {
-    return this.buildState();
+  async getRoomState(): Promise<RoomState | null> {
+    const row = this.roomRow();
+    return row ? this.buildState() : null;
   }
 
   async fetch(request: Request): Promise<Response> {
+    if (request.headers.get("Upgrade") !== "websocket") {
+      return new Response("Expected websocket", { status: 426 });
+    }
+
     const url = new URL(request.url);
-    const participantId = url.searchParams.get("pid") || crypto.randomUUID();
-    const participantName = url.searchParams.get("name") || "Anonymous";
+    const participantId = url.searchParams.get("pid")?.trim();
+    const participantName = url.searchParams.get("name")?.trim();
+
+    if (!participantId || !participantName) {
+      return new Response("participant details required", { status: 400 });
+    }
+
+    const roomKey = url.pathname.split("/").pop()?.trim() || "room";
+    this.createRoomIfMissing(roomKey, roomKey, Date.now());
+    const room = this.roomRow();
+
+    if (!room) {
+      return new Response("room not found", { status: 404 });
+    }
 
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
-
     server.accept();
 
-    const participant: Participant = {
-      id: participantId,
-      name: participantName,
-      isHost: false,
-      canVote: true,
-      joinedAt: Date.now(),
-    };
+    this.ctx.storage.sql.exec(
+      `INSERT INTO participants (id, name, online, joined_at) VALUES (?, ?, 1, ?)
+       ON CONFLICT(id) DO UPDATE SET name = excluded.name, online = 1`,
+      participantId,
+      participantName,
+      Date.now(),
+    );
 
-    const existing = this.participants.find((p) => p.id === participantId);
-    if (existing) {
-      Object.assign(existing, participant);
-    } else {
-      this.participants.push(participant);
-      this.ctx.storage.sql.exec(
-        "INSERT OR IGNORE INTO participants (id, name, is_host, can_vote, joined_at) VALUES (?, ?, 0, 1, ?)",
-        participantId, participantName, Date.now()
-      );
-    }
-
-    this.sessions.set(participantId, server);
-    server.send(JSON.stringify({ type: "room_state", state: this.buildState() }));
-
-    this.broadcast({ type: "participant_joined", participant }, participantId);
+    this.sessions.set(server, { participantId });
+    this.touchRoom();
+    this.broadcast({ type: "system", message: `${participantName} joined ${room.room_name}.` });
+    this.broadcastState();
 
     server.addEventListener("message", (event) => {
       try {
-        const msg = JSON.parse(event.data as string);
-        this.handleMessage(participantId, msg);
+        const message = JSON.parse(String(event.data)) as ClientMessage;
+        this.handleMessage(participantId, message);
       } catch {
-        server.send(JSON.stringify({ type: "error", message: "invalid message" }));
+        this.send(server, { type: "error", message: "invalid message" });
       }
     });
 
     server.addEventListener("close", () => {
-      this.sessions.delete(participantId);
-      this.broadcast({ type: "participant_left", participantId });
+      this.sessions.delete(server);
+      this.ctx.storage.sql.exec("UPDATE participants SET online = 0 WHERE id = ?", participantId);
+      const name = this.participantName(participantId);
+      this.touchRoom();
+      this.broadcast({ type: "system", message: `${name} left room.` });
+      this.broadcastState();
     });
 
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  private handleMessage(pid: string, msg: any) {
-    const participant = this.participants.find((p) => p.id === pid);
-    if (!participant) return;
+  private handleMessage(participantId: string, message: ClientMessage) {
+    const room = this.roomRow();
+    if (!room) {
+      return;
+    }
 
-    switch (msg.type) {
+    switch (message.type) {
       case "vote": {
-        if (!participant.canVote) return;
-
-        const round = this.currentRound();
-        if (!round || round.status !== "voting") return;
-
+        const numbers = JSON.parse(room.numbers) as string[];
+        if (!numbers.includes(message.value)) {
+          this.broadcast({ type: "error", message: `invalid vote ${message.value}` });
+          return;
+        }
         this.ctx.storage.sql.exec(
-          `INSERT INTO votes (round_id, participant_id, value, voted_at)
-           VALUES (?, ?, ?, ?)
-           ON CONFLICT(round_id, participant_id) DO UPDATE SET value = excluded.value, voted_at = excluded.voted_at`,
-          round.id, pid, msg.value, Date.now()
+          `INSERT INTO votes (participant_id, value, updated_at) VALUES (?, ?, ?)
+           ON CONFLICT(participant_id) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+          participantId,
+          message.value,
+          Date.now(),
         );
-
-        this.broadcast({ type: "vote_cast", participantId: pid });
+        this.ctx.storage.sql.exec("UPDATE room SET revealed = 0, updated_at = ? WHERE id = ?", Date.now(), room.id);
+        this.broadcastState();
         break;
       }
 
-      case "reveal": {
-        if (!participant.isHost) return;
-        const round = this.currentRound();
-        if (!round || round.status !== "voting") return;
-
-        this.ctx.storage.sql.exec(
-          "UPDATE rounds SET status = 'revealed' WHERE id = ?", round.id
-        );
-
-        const rows = this.ctx.storage.sql.exec<{ participant_id: string; value: string }>(
-          "SELECT participant_id, value FROM votes WHERE round_id = ? AND value IS NOT NULL", round.id
-        ).toArray();
-
-        const votes: Record<string, string> = {};
-        for (const row of rows) votes[row.participant_id] = row.value;
-
-        this.broadcast({ type: "votes_revealed", votes });
+      case "reveal":
+        this.ctx.storage.sql.exec("UPDATE room SET revealed = 1, updated_at = ? WHERE id = ?", Date.now(), room.id);
+        this.broadcast({ type: "system", message: `${this.participantName(participantId)} revealed votes.` });
+        this.broadcastState();
         break;
-      }
 
-      case "clear_round": {
-        if (!participant.isHost) return;
-        this.ctx.storage.sql.exec("DELETE FROM votes WHERE round_id = ?", this.currentRound()?.id ?? 0);
-        this.ctx.storage.sql.exec("DELETE FROM rounds WHERE id = ?", this.currentRound()?.id ?? 0);
-        this.broadcast({ type: "round_cleared" });
+      case "clear":
+        this.ctx.storage.sql.exec("DELETE FROM votes");
+        this.ctx.storage.sql.exec("UPDATE room SET revealed = 0, updated_at = ? WHERE id = ?", Date.now(), room.id);
+        this.broadcast({ type: "system", message: `${this.participantName(participantId)} cleared round.` });
+        this.broadcastState();
         break;
-      }
 
-      case "new_round": {
-        if (!participant.isHost) return;
-        const num = this.ctx.storage.sql.exec<{ n: number }>(
-          "SELECT COALESCE(MAX(number), 0) + 1 as n FROM rounds"
-        ).one().n;
-
-        const now = Date.now();
-        this.ctx.storage.sql.exec(
-          "INSERT INTO rounds (number, topic, status, created_at) VALUES (?, ?, 'voting', ?)",
-          num, msg.topic ?? "", now
-        );
-
-        this.broadcast({
-          type: "new_round",
-          round: { id: this.currentRound()!.id, number: num, topic: msg.topic ?? "", status: "voting", createdAt: now },
-        });
+      case "rename":
+        if (!message.name.trim()) {
+          this.broadcast({ type: "error", message: "name required" });
+          return;
+        }
+        this.ctx.storage.sql.exec("UPDATE participants SET name = ? WHERE id = ?", message.name.trim(), participantId);
+        this.broadcast({ type: "system", message: `${this.participantName(participantId)} updated name.` });
+        this.broadcastState();
         break;
-      }
-
-      case "change_settings": {
-        if (!participant.isHost) return;
-        if (!Array.isArray(msg.numbers) || msg.numbers.length === 0) return;
-        this.ctx.storage.sql.exec("UPDATE room SET numbers = ?", JSON.stringify(msg.numbers));
-        this.broadcast({ type: "settings_changed", numbers: msg.numbers });
-        break;
-      }
-
-      case "reassign_host": {
-        if (!participant.isHost) return;
-        this.ctx.storage.sql.exec("UPDATE room SET host_id = ?", msg.participantId);
-        this.broadcast({ type: "host_changed", hostId: msg.participantId });
-        break;
-      }
-
-      case "set_vote_permission": {
-        if (!participant.isHost) return;
-        this.broadcast({ type: "participant_updated", participant: { id: msg.participantId, canVote: msg.canVote } as any });
-        break;
-      }
-
-      case "update_name": {
-        if (!msg.name) return;
-        this.broadcast({ type: "participant_updated", participant: { id: pid, name: msg.name } as any });
-        break;
-      }
     }
   }
 
-  private currentRound() {
-    const rows = this.ctx.storage.sql.exec<Round>(
-      "SELECT id, number, topic, status, created_at FROM rounds ORDER BY id DESC LIMIT 1"
+  private roomRow(): RoomRow | null {
+    const rows = this.ctx.storage.sql.exec<RoomRow>(
+      "SELECT id, room_name, numbers, revealed, created_at, updated_at FROM room LIMIT 1",
     ).toArray();
+
     return rows[0] ?? null;
   }
 
-  private buildState(): RoomState {
-    const roomRow = this.ctx.storage.sql.exec<{
-      id: string; host_id: string; numbers: string; status: string;
-      created_at: number; expires_at: number;
-    }>("SELECT * FROM room").one();
+  private createRoomIfMissing(roomKey: string, roomName: string, now: number) {
+    if (this.roomRow()) {
+      return;
+    }
 
-    const participantRows = this.ctx.storage.sql.exec<{
-      id: string; name: string; is_host: number; can_vote: number; joined_at: number;
-    }>("SELECT * FROM participants ORDER BY joined_at").toArray();
+    this.ctx.storage.sql.exec(
+      "INSERT INTO room (id, room_name, numbers, revealed, created_at, updated_at) VALUES (?, ?, ?, 0, ?, ?)",
+      roomKey,
+      roomName,
+      JSON.stringify(defaultNumbers),
+      now,
+      now,
+    );
+  }
+
+  private buildState(): RoomState {
+    const room = this.roomRow();
+    if (!room) {
+      throw new Error("room missing");
+    }
+
+    const votes = this.ctx.storage.sql.exec<VoteRow>(
+      "SELECT participant_id, value, updated_at FROM votes",
+    ).toArray();
+    const voteMap = new Map(votes.map((vote) => [vote.participant_id, vote]));
+
+    const participants = this.ctx.storage.sql.exec<ParticipantRow>(
+      "SELECT id, name, online, joined_at FROM participants ORDER BY joined_at ASC",
+    ).toArray().map<ParticipantState>((participant) => {
+      const vote = voteMap.get(participant.id)?.value ?? null;
+      return {
+        id: participant.id,
+        name: participant.name,
+        online: participant.online === 1,
+        joinedAt: participant.joined_at,
+        vote: room.revealed === 1 ? vote : null,
+        hasVoted: vote !== null,
+      };
+    });
+
+    const numericVotes = votes
+      .map((vote) => Number(vote.value))
+      .filter((value) => Number.isFinite(value));
+
+    const average = room.revealed === 1 && numericVotes.length > 0
+      ? Math.round((numericVotes.reduce((sum, value) => sum + value, 0) / numericVotes.length) * 100) / 100
+      : null;
 
     return {
-      id: roomRow.id,
-      name: roomRow.id,
-      hostId: roomRow.host_id,
-      numbers: JSON.parse(roomRow.numbers),
-      status: roomRow.status as any,
-      createdAt: roomRow.created_at,
-      expiresAt: roomRow.expires_at,
-      participants: participantRows.map((p) => ({
-        id: p.id,
-        name: p.name,
-        isHost: p.is_host === 1,
-        canVote: p.can_vote === 1,
-        joinedAt: p.joined_at,
-      })),
-      currentRound: this.currentRound(),
+      id: room.id,
+      roomName: room.room_name,
+      numbers: JSON.parse(room.numbers) as string[],
+      createdAt: room.created_at,
+      updatedAt: room.updated_at,
+      revealed: room.revealed === 1,
+      participants,
+      summary: {
+        average,
+        revealedCount: room.revealed === 1 ? votes.filter((vote) => vote.value !== null).length : 0,
+        totalParticipants: participants.length,
+      },
     };
   }
 
-  private broadcast(msg: ServerMessage, excludePid?: string) {
-    const data = JSON.stringify(msg);
-    for (const [pid, ws] of this.sessions) {
-      if (pid !== excludePid) ws.send(data);
+  private broadcastState() {
+    this.touchRoom();
+    this.broadcast({ type: "room_state", state: this.buildState() });
+  }
+
+  private broadcast(message: ServerMessage) {
+    for (const socket of this.sessions.keys()) {
+      this.send(socket, message);
     }
   }
 
-  async alarm() {
-    const row = this.ctx.storage.sql.exec<{ id: string }>("SELECT id FROM room").one();
-    if (row) this.ctx.storage.sql.exec("UPDATE room SET status = 'closed' WHERE id = ?", row.id);
+  private send(socket: WebSocket, message: ServerMessage) {
+    socket.send(JSON.stringify(message));
+  }
+
+  private participantName(participantId: string) {
+    return this.ctx.storage.sql.exec<{ name: string }>(
+      "SELECT name FROM participants WHERE id = ?",
+      participantId,
+    ).one()?.name ?? "user";
+  }
+
+  private touchRoom() {
+    const room = this.roomRow();
+    if (!room) {
+      return;
+    }
+    this.ctx.storage.sql.exec("UPDATE room SET updated_at = ? WHERE id = ?", Date.now(), room.id);
   }
 }

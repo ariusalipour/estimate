@@ -2,7 +2,8 @@
   "name": "estimate",
   "private": true,
   "scripts": {
-    "build": "cd frontend && npm install && npm run build && cd ../worker && npm run deploy",
-    "dev": "cd frontend && npm run build && cd ../worker && npm run dev"
+    "build": "npm --prefix frontend install && npm --prefix frontend run build && npm --prefix worker install && npm --prefix worker run build",
+    "dev": "npm --prefix frontend run dev",
+    "deploy": "npm --prefix frontend install && npm --prefix frontend run build && npm --prefix worker install && npm --prefix worker run deploy"
   }
 }
