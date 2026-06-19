@@ -35,6 +35,7 @@ type VoteRow = {
 };
 
 const defaultNumbers = ["0", "1", "2", "3", "5", "8", "13", "21", "34", "55", "89", "?"];
+const roomTtlMs = 7 * 24 * 60 * 60 * 1000;
 
 export class RoomDO extends DurableObject<Env> {
   private sessions = new Map<WebSocket, SessionInfo>();
@@ -83,7 +84,7 @@ export class RoomDO extends DurableObject<Env> {
       now,
     );
 
-    this.touchRoom();
+    this.touchRoom(now);
 
     return {
       roomKey: payload.roomKey,
@@ -112,7 +113,8 @@ export class RoomDO extends DurableObject<Env> {
     }
 
     const roomKey = url.pathname.split("/").pop()?.trim() || "room";
-    this.createRoomIfMissing(roomKey, roomKey, Date.now());
+    const now = Date.now();
+    this.createRoomIfMissing(roomKey, roomKey, now);
     const room = this.roomRow();
 
     if (!room) {
@@ -128,11 +130,11 @@ export class RoomDO extends DurableObject<Env> {
        ON CONFLICT(id) DO UPDATE SET name = excluded.name, online = 1`,
       participantId,
       participantName,
-      Date.now(),
+      now,
     );
 
     this.sessions.set(server, { participantId });
-    this.touchRoom();
+    this.touchRoom(now);
     this.broadcast({ type: "system", message: `${participantName} joined ${room.room_name}.` });
     this.broadcastState();
 
@@ -155,12 +157,11 @@ export class RoomDO extends DurableObject<Env> {
       ).toArray()[0]?.count ?? 0;
 
       if (remainingParticipants === 0) {
-        this.ctx.storage.sql.exec("DELETE FROM votes");
-        this.ctx.storage.sql.exec("DELETE FROM room");
+        this.clearRoomData();
         return;
       }
 
-      this.touchRoom();
+      this.touchRoom(Date.now());
       this.broadcast({ type: "system", message: `${name} left room.` });
       this.broadcastState();
     });
@@ -291,7 +292,7 @@ export class RoomDO extends DurableObject<Env> {
   }
 
   private broadcastState() {
-    this.touchRoom();
+    this.touchRoom(Date.now());
     this.broadcast({ type: "room_state", state: this.buildState() });
   }
 
@@ -312,11 +313,33 @@ export class RoomDO extends DurableObject<Env> {
     ).one()?.name ?? "user";
   }
 
-  private touchRoom() {
+  private touchRoom(now: number) {
     const room = this.roomRow();
     if (!room) {
       return;
     }
-    this.ctx.storage.sql.exec("UPDATE room SET updated_at = ? WHERE id = ?", Date.now(), room.id);
+    this.ctx.storage.sql.exec("UPDATE room SET updated_at = ? WHERE id = ?", now, room.id);
+    void this.ctx.storage.setAlarm(now + roomTtlMs);
+  }
+
+  private clearRoomData() {
+    this.ctx.storage.sql.exec("DELETE FROM votes");
+    this.ctx.storage.sql.exec("DELETE FROM participants");
+    this.ctx.storage.sql.exec("DELETE FROM room");
+  }
+
+  async alarm() {
+    const room = this.roomRow();
+    if (!room) {
+      return;
+    }
+
+    const now = Date.now();
+    if (room.updated_at + roomTtlMs <= now) {
+      this.clearRoomData();
+      return;
+    }
+
+    void this.ctx.storage.setAlarm(room.updated_at + roomTtlMs);
   }
 }
