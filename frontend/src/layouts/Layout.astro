@@ -16,12 +16,14 @@ const { title = "EstiMate" } = Astro.props;
     <style>
       :root {
         color-scheme: dark;
-        --bg: #050805;
-        --panel: #0b120b;
-        --bar: #101710;
-        --text: #8bff8b;
-        --text-dim: rgba(139, 255, 139, 0.62);
-        --line: rgba(139, 255, 139, 0.28);
+        --bg: #050a16;
+        --panel: #07101f;
+        --panel-alt: #0d1730;
+        --bar: #10204a;
+        --text: #a8c8ff;
+        --text-dim: rgba(168, 200, 255, 0.72);
+        --line: rgba(116, 168, 255, 0.35);
+        --accent: #f2f4ff;
       }
 
       * { box-sizing: border-box; }
@@ -29,9 +31,13 @@ const { title = "EstiMate" } = Astro.props;
       html, body {
         margin: 0;
         min-height: 100%;
-        background: radial-gradient(circle at top, #0d170d, var(--bg) 48%);
+        width: 100%;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at top, rgba(44, 83, 170, 0.28), transparent 24%),
+          linear-gradient(180deg, #091228, var(--bg) 30%, #030712 100%);
         color: var(--text);
-        font-family: "Fira Code", "Cascadia Code", "JetBrains Mono", monospace;
+        font-family: "Perfect DOS VGA 437", "Courier New", "Lucida Console", monospace;
       }
 
       body::before {
@@ -39,25 +45,41 @@ const { title = "EstiMate" } = Astro.props;
         position: fixed;
         inset: 0;
         pointer-events: none;
-        background: repeating-linear-gradient(
-          0deg,
-          transparent 0,
-          transparent 3px,
-          rgba(139, 255, 139, 0.025) 3px,
-          rgba(139, 255, 139, 0.025) 4px
-        );
+        background:
+          repeating-linear-gradient(
+            0deg,
+            transparent 0,
+            transparent 2px,
+            rgba(255, 255, 255, 0.035) 2px,
+            rgba(255, 255, 255, 0.035) 3px
+          ),
+          linear-gradient(90deg, rgba(90, 124, 255, 0.03), transparent 18%, transparent 82%, rgba(90, 124, 255, 0.03));
+      }
+
+      body::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background-image:
+          linear-gradient(rgba(112, 168, 255, 0.06) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(112, 168, 255, 0.04) 1px, transparent 1px);
+        background-size: 100% 24px, 24px 100%;
+        opacity: 0.28;
       }
 
       main {
         min-height: 100vh;
         width: 100vw;
+        overflow: hidden;
       }
 
       .shell {
         width: 100vw;
         min-height: 100vh;
         border: 0;
-        background: linear-gradient(180deg, rgba(13, 24, 13, 0.95), rgba(5, 8, 5, 0.98));
+        background: linear-gradient(180deg, rgba(10, 19, 40, 0.96), rgba(5, 10, 21, 0.98));
+        overflow: hidden;
       }
 
       .shell-bar {
@@ -65,23 +87,56 @@ const { title = "EstiMate" } = Astro.props;
         justify-content: space-between;
         align-items: center;
         gap: 12px;
-        padding: 10px 14px;
-        border-bottom: 1px solid var(--line);
-        background: var(--bar);
+        padding: 10px 16px;
+        border-bottom: 2px solid var(--line);
+        background: linear-gradient(180deg, #15316f, var(--bar));
         font-size: 12px;
         text-transform: uppercase;
         letter-spacing: 0.12em;
-        color: var(--text-dim);
+        color: var(--accent);
+        text-shadow: 0 0 8px rgba(168, 200, 255, 0.35);
       }
 
       .shell-body {
-        height: calc(100vh - 43px);
+        height: calc(100vh - 67px);
         padding: 10px;
-        background: var(--panel);
+        overflow: hidden;
+        background:
+          linear-gradient(180deg, rgba(24, 44, 92, 0.1), transparent 80px),
+          linear-gradient(180deg, var(--panel-alt), var(--panel));
+      }
+
+      .shell-body :global(.xterm) {
+        height: 100%;
+      }
+
+      .shell-body :global(.xterm-viewport) {
+        overflow: hidden !important;
+      }
+
+      .shell-body::before {
+        content: "AMIBIOS(C) ESTIMATE 486DX2-SERIES  CMOS CHECKSUM OK   MEMORY TEST: 640K BASE, 7168K EXT";
+        display: block;
+        color: rgba(168, 200, 255, 0.52);
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        padding: 2px 4px 8px;
+      }
+
+      .shell-footer {
+        height: 24px;
+        display: grid;
+        place-items: center;
+        border-top: 1px solid var(--line);
+        background: linear-gradient(180deg, #10204a, #0b1736);
+        color: var(--accent);
+        font-size: 12px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
       }
 
       @media (max-width: 720px) {
-        .shell-body { height: calc(100vh - 43px); }
+        .shell-body { height: calc(100vh - 67px); }
       }
     </style>
   </head>
@@ -89,12 +144,13 @@ const { title = "EstiMate" } = Astro.props;
     <main>
       <section class="shell">
         <div class="shell-bar">
-          <span>estimate terminal</span>
-          <span>astro + durable objects</span>
+          <span>EstiMate Planning Poker Terminal</span>
+          <span></span>
         </div>
         <div class="shell-body">
           <slot />
         </div>
+        <div class="shell-footer">A Mockachino Project</div>
       </section>
     </main>
   </body>

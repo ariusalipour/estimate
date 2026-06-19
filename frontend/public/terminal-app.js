@@ -17,17 +17,20 @@ function initTerminalApp() {
 
   const term = new Terminal({
     cursorBlink: true,
-    fontFamily: '"Fira Code", "Cascadia Code", monospace',
+    fontFamily: '"Courier New", "Lucida Console", monospace',
     fontSize: 15,
-    lineHeight: 1.25,
+    fontWeight: "700",
+    lineHeight: 1.15,
     theme: {
-      background: "#0b120b",
-      foreground: "#8bff8b",
-      cursor: "#8bff8b",
-      selectionBackground: "rgba(139,255,139,0.25)",
-      black: "#0b120b",
-      green: "#8bff8b",
-      brightGreen: "#c6ffc6",
+      background: "#08101e",
+      foreground: "#a8c8ff",
+      cursor: "#f2f4ff",
+      selectionBackground: "rgba(168,200,255,0.28)",
+      black: "#08101e",
+      blue: "#7ea8ff",
+      brightBlue: "#d5e2ff",
+      white: "#a8c8ff",
+      brightWhite: "#f2f4ff",
     },
   });
 
@@ -44,7 +47,7 @@ function initTerminalApp() {
   let promptLabel = "> ";
   let promptCount = 0;
   let isRendering = false;
-  let statusLine = "Type 'help' for commands.";
+  let statusLine = "READY. TYPE HELP FOR COMMAND INDEX.";
 
   window.addEventListener("resize", () => {
     fitAddon.fit();
@@ -90,13 +93,17 @@ function initTerminalApp() {
   refresh();
 
   function printBoot() {
-    term.writeln("ESTIMATE planning poker");
-    term.writeln("Commands stay inside terminal. Rooms live in Durable Objects.");
+    term.writeln("EstiMate Poker Planning Terminal v1.0");
+    term.writeln("Copyright (C) EstiMate Systems");
+    term.writeln("CPU : 80486DX2-66 Compatible        MODE : PROTECTED");
+    term.writeln("BUS : ISA/VLB BACKPLANE             I/O  : DURABLE OBJECT FABRIC");
+    term.writeln("BOOT: ROOM SESSION MANAGER [OK]     RTC  : SYNCHRONIZED");
+    term.writeln("POST: POKER PLANNING CORE  [OK]     NET  : WEBSOCKET LINK READY");
     if (settings.name) {
-      term.writeln(`Saved name: ${settings.name}`);
+      term.writeln(`CMOS USER PROFILE ................. ${settings.name}`);
     }
     if (settings.lastRoomName && settings.lastRoomKey) {
-      term.writeln(`Saved room: ${settings.lastRoomName} (${settings.lastRoomKey})`);
+      term.writeln(`LAST ROOM IMAGE ................... ${settings.lastRoomName}`);
     }
     term.writeln("");
   }
@@ -144,16 +151,17 @@ function initTerminalApp() {
   }
 
   function printHelp() {
-    term.writeln("help                        show commands");
-    term.writeln("name <display-name>         save display name in cookie");
-    term.writeln("join <room> <password>      join or auto-create room");
-    term.writeln("rejoin                      join last saved room key");
-    term.writeln("leave                       disconnect from current room");
-    term.writeln("vote <value>                cast planning vote");
-    term.writeln("reveal                      show all votes and overall estimate");
-    term.writeln("clear                       reset revealed state and votes");
-    term.writeln("room                        redraw room TUI");
-    term.writeln("users                       alias for room");
+    term.writeln("COMMAND  ARGUMENTS               FUNCTION");
+    term.writeln("HELP                            SHOW COMMAND INDEX");
+    term.writeln("NAME    <DISPLAY-NAME>          SAVE USER PROFILE IN CMOS COOKIE");
+    term.writeln("JOIN    <ROOM> <PASSWORD>       ATTACH TO OR BOOT ROOM IMAGE");
+    term.writeln("REJOIN                          LOAD LAST ROOM IMAGE");
+    term.writeln("LEAVE                           DROP ACTIVE SOCKET LINK");
+    term.writeln("VOTE    <VALUE>                 WRITE PLANNING POKER VALUE");
+    term.writeln("REVEAL                          UNMASK ALL ESTIMATES");
+    term.writeln("CLEAR                           RESET ACTIVE ROUND STATE");
+    term.writeln("ROOM                            REDRAW ACTIVE TUI FRAME");
+    term.writeln("USERS                           ALIAS FOR ROOM");
   }
 
   function handleName(args) {
@@ -359,16 +367,16 @@ function initTerminalApp() {
   function lobbyView() {
     return [
       border(lobbyWidth),
-      row("ESTIMATE lobby", lobbyWidth),
+      row("ESTIMATE SETUP UTILITY", lobbyWidth),
       border(lobbyWidth),
-      row(`name: ${settings.name || "<unset>"}`, lobbyWidth),
-      row(`saved room: ${settings.lastRoomName || "<none>"}`, lobbyWidth),
+      row(`USER PROFILE ....... ${settings.name || "<UNSET>"}`, lobbyWidth),
+      row(`LAST ROOM .......... ${settings.lastRoomName || "<NONE>"}`, lobbyWidth),
       row("", lobbyWidth),
-      row("Commands", lobbyWidth),
-      row("  name <display-name>", lobbyWidth),
-      row("  join <room> <password>", lobbyWidth),
-      row("  rejoin", lobbyWidth),
-      row("  help", lobbyWidth),
+      row("BOOT OPTIONS", lobbyWidth),
+      row("  NAME <DISPLAY-NAME>", lobbyWidth),
+      row("  JOIN <ROOM> <PASSWORD>", lobbyWidth),
+      row("  REJOIN", lobbyWidth),
+      row("  HELP", lobbyWidth),
       border(lobbyWidth),
     ];
   }
@@ -391,16 +399,16 @@ function initTerminalApp() {
 
     return [
       border(roomWidth),
-      row(`room: ${state.roomName}    password: ${currentPassword()}`, roomWidth),
-      row(`reveal: ${state.revealed ? "open" : "hidden"}    participants: ${state.participants.length}`, roomWidth),
-      row(`overall estimate: ${average}`, roomWidth),
+      row(`ROOM : ${state.roomName}    PASSWORD : ${currentPassword()}`, roomWidth),
+      row(`REVEAL : ${state.revealed ? "OPEN" : "HIDDEN"}    PARTICIPANTS : ${state.participants.length}`, roomWidth),
+      row(`SYSTEM ESTIMATE : ${average}`, roomWidth),
       border(roomWidth),
-      row(`votes: ${voteLine}`, roomWidth),
-      sectionBorder("users", roomWidth),
+      row(`VOTE ROM : ${voteLine}`, roomWidth),
+      sectionBorder("ROOM BUS", roomWidth),
       ...users.map((line) => row(line, roomWidth)),
       border(roomWidth),
-      row("Commands", roomWidth),
-      row("  vote <value>   reveal   clear   leave   room   help", roomWidth),
+      row("CONTROL BUS", roomWidth),
+      row("  VOTE <VALUE>   REVEAL   CLEAR   LEAVE   ROOM   HELP", roomWidth),
       border(roomWidth),
     ];
   }
