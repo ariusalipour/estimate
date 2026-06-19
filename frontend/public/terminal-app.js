@@ -45,16 +45,15 @@ function initTerminalApp() {
       const links = [];
 
       if (currentState) {
-        const linkText = currentQuickJoinLabel(currentState.roomName);
-        const start = line.indexOf(linkText);
-
-        if (start !== -1) {
+        const copyText = "[COPY]";
+        const copyStart = line.indexOf(copyText);
+        if (copyStart !== -1) {
           links.push({
             range: {
-              start: { x: start + 1, y },
-              end: { x: start + linkText.length, y },
+              start: { x: copyStart + 1, y },
+              end: { x: copyStart + copyText.length, y },
             },
-            text: linkText,
+            text: copyText,
             activate: async () => {
               try {
                 await navigator.clipboard.writeText(currentQuickJoinUrl(currentState.roomName, currentPassword()));
@@ -371,6 +370,7 @@ function initTerminalApp() {
     try {
       const session = await postJson("/api/session/room", {
         roomKey: settings.lastRoomKey,
+        roomName: settings.lastRoomName,
         participantId: settings.participantId,
         participantName: userName,
       });
@@ -559,7 +559,7 @@ function initTerminalApp() {
     return [
       border(roomWidth),
       row(`ROOM : ${state.roomName}    PASSWORD : ${currentPassword()}`, roomWidth),
-      row(`QUICK JOIN : ${currentQuickJoinLabel(state.roomName)} [CLICK TO COPY]`, roomWidth),
+      row("QUICK JOIN LINK : [COPY]", roomWidth),
       row(`REVEAL : ${state.revealed ? "OPEN" : "HIDDEN"}    PARTICIPANTS : ${state.participants.length}`, roomWidth),
       row(`SYSTEM ESTIMATE : ${average}`, roomWidth),
       border(roomWidth),
@@ -668,10 +668,6 @@ function findCommandLabelStart(line, label) {
 
 function currentQuickJoinUrl(roomName, password) {
   return `${window.location.origin}${currentQuickJoinPath(roomName, password)}`;
-}
-
-function currentQuickJoinLabel(roomName) {
-  return `<${roomName}>`;
 }
 
 function currentQuickJoinPath(roomName, password) {
