@@ -39,7 +39,42 @@ function initTerminalApp() {
   term.open(root);
   fitAddon.fit();
 
+  term.registerLinkProvider({
+    provideLinks(y, callback) {
+      const path = currentState ? currentQuickJoinPath(currentState.id) : null;
+      if (!path) {
+        callback([]);
+        return;
+      }
+
+      const line = term.buffer.active.getLine(y - 1)?.translateToString(true) ?? "";
+      const start = line.indexOf(path);
+      if (start === -1) {
+        callback([]);
+        return;
+      }
+
+      callback([{
+        range: {
+          start: { x: start + 1, y },
+          end: { x: start + path.length, y },
+        },
+        text: path,
+        activate: async () => {
+          try {
+            await navigator.clipboard.writeText(currentQuickJoinUrl(currentState.id));
+            statusLine = "QUICK JOIN LINK COPIED TO CLIPBOARD.";
+          } catch {
+            statusLine = "CLIPBOARD COPY FAILED.";
+          }
+          refresh();
+        },
+      }]);
+    },
+  });
+
   const settings = loadSettings();
+  const pendingQuickJoinRoomKey = parseQuickJoinRoomKey(window.location.pathname);
   let ws = null;
   let currentRoomKey = settings.lastRoomKey;
   let currentState = null;
@@ -104,6 +139,9 @@ function initTerminalApp() {
     }
     if (settings.lastRoomName && settings.lastRoomKey) {
       term.writeln(`LAST ROOM IMAGE ................... ${settings.lastRoomName}`);
+    }
+    if (pendingQuickJoinRoomKey) {
+      term.writeln(`BOOT LINK ........................ ${pendingQuickJoinRoomKey}`);
     }
     term.writeln("");
   }
@@ -175,6 +213,10 @@ function initTerminalApp() {
     saveSettings(settings);
     send({ type: "rename", name });
     term.writeln(`Name saved: ${name}`);
+
+    if (pendingQuickJoinRoomKey && !currentState) {
+      void handleQuickJoin();
+    }
   }
 
   async function handleJoin(args) {
@@ -208,6 +250,7 @@ function initTerminalApp() {
       settings.lastRoomPassword = password;
       currentState = session.state;
       saveSettings(settings);
+      window.history.replaceState({}, "", currentQuickJoinPath(session.roomKey));
       connectSocket();
       statusLine = `Joined ${session.roomName}.`;
       refresh();
@@ -242,6 +285,9 @@ function initTerminalApp() {
       settings.participantId = session.participantId;
       currentState = session.state;
       saveSettings(settings);
+      if (session.roomKey) {
+        window.history.replaceState({}, "", currentQuickJoinPath(session.roomKey));
+      }
       connectSocket();
       statusLine = `Rejoined ${session.roomName}.`;
       refresh();
@@ -259,7 +305,40 @@ function initTerminalApp() {
     currentRoomKey = "";
     currentState = null;
     statusLine = "Disconnected.";
+    window.history.replaceState({}, "", "/");
     refresh();
+  }
+
+  async function handleQuickJoin() {
+    const userName = ensureName();
+    if (!userName || !pendingQuickJoinRoomKey) {
+      return;
+    }
+
+    statusLine = `Booting quick join ${pendingQuickJoinRoomKey}...`;
+    refresh();
+
+    try {
+      const session = await postJson("/api/session/room", {
+        roomKey: pendingQuickJoinRoomKey,
+        participantId: settings.participantId,
+        participantName: userName,
+      });
+
+      currentRoomKey = session.roomKey;
+      settings.participantId = session.participantId;
+      settings.lastRoomKey = session.roomKey;
+      settings.lastRoomName = session.roomName;
+      currentState = session.state;
+      saveSettings(settings);
+      window.history.replaceState({}, "", currentQuickJoinPath(session.roomKey));
+      connectSocket();
+      statusLine = `Joined ${session.roomName}.`;
+      refresh();
+    } catch (error) {
+      statusLine = error instanceof Error ? error.message : String(error);
+      refresh();
+    }
   }
 
   function handleVote(args) {
@@ -395,6 +474,7 @@ function initTerminalApp() {
     return [
       border(roomWidth),
       row(`ROOM : ${state.roomName}    PASSWORD : ${currentPassword()}`, roomWidth),
+      row(`QUICK JOIN : ${currentQuickJoinPath(state.id)} [CLICK TO COPY]`, roomWidth),
       row(`REVEAL : ${state.revealed ? "OPEN" : "HIDDEN"}    PARTICIPANTS : ${state.participants.length}`, roomWidth),
       row(`SYSTEM ESTIMATE : ${average}`, roomWidth),
       border(roomWidth),
@@ -422,6 +502,12 @@ function initTerminalApp() {
 
     return "<unknown>";
   }
+
+  if (pendingQuickJoinRoomKey && settings.name) {
+    void handleQuickJoin();
+  } else if (pendingQuickJoinRoomKey) {
+    statusLine = `QUICK JOIN READY FOR ${pendingQuickJoinRoomKey}. SET NAME TO BOOT.`;
+  }
 }
 
 function parseArgs(value) {
@@ -448,6 +534,23 @@ function sectionBorder(label, width) {
   const left = Math.floor((total - text.length) / 2);
   const right = total - text.length - left;
   return `+${"-".repeat(left)}${text}${"-".repeat(right)}+`;
+}
+
+function currentQuickJoinUrl(roomKey) {
+  return `${window.location.origin}${currentQuickJoinPath(roomKey)}`;
+}
+
+function currentQuickJoinPath(roomKey) {
+  return `/${encodeURIComponent(roomKey)}`;
+}
+
+function parseQuickJoinRoomKey(pathname) {
+  const path = pathname.replace(/^\/+|\/+$/g, "");
+  if (!path || path === "room") {
+    return null;
+  }
+
+  return decodeURIComponent(path);
 }
 
 async function postJson(url, payload) {

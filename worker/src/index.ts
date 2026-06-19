@@ -35,6 +35,10 @@ export default {
       return stub.fetch(request);
     }
 
+    if (request.method === "GET" && !url.pathname.includes(".")) {
+      return env.ASSETS.fetch(new Request(new URL("/index.html", request.url), request));
+    }
+
     return env.ASSETS.fetch(request);
   },
 } satisfies ExportedHandler<Env>;
